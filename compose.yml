@@ -1,0 +1,42 @@
+version: '3.8'
+services:
+  open5gs-db:
+    image: mongo:6.0
+    volumes: [open5gs-db:/data/db]
+  open5gs-core:
+    image: ghcr.io/open5gs/open5gs:latest
+    depends_on: [open5gs-db]
+    network_mode: "host"
+    volumes: ["./open5gs-config:/etc/open5gs"]
+  ueransim:
+    image: ghcr.io/aligungr/ueransim:latest
+    command: config/nr-gnb.yaml
+    network_mode: "host"
+    depends_on: [open5gs-core]
+  sdnswitch:
+    image: ovsdpdk/ovs:latest
+    privileged: true
+    ports: ["6633:6633"]
+    command: >
+      ovsdb-server --remote=punix:/usr/local/var/run/openvswitch/db.sock &&
+      ovs-vswitchd
+    networks: [net1]
+  controller:
+    image: osrg/ryu:latest
+    command: ryu-manager --ofp-tcp-listen-port 6633 simple_switch.py
+    networks: [net1]
+  orchestrator:
+    build: ./orchestrator
+    depends_on: [controller]
+  prometheus:
+    image: prom/prometheus
+    volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml"]
+    ports: ["9090:9090"]
+  grafana:
+    image: grafana/grafana
+    ports: ["3000:3000"]
+volumes:
+  open5gs-db:
+networks:
+  net1:
+    driver: bridge
